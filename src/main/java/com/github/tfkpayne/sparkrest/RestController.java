@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 import static spark.Spark.get;
 
@@ -30,23 +31,50 @@ public class RestController {
 
 
     public static void main(String[] args) {
+        if (args.length > 0 && "createDB".equals(args[0])) {
+            setUpDB();
+        } else {
         get("/hello", (request, response) -> "Hello World");
-        S3Object object = s3.getObject(new GetObjectRequest(BUCKET_NAME, FILE_NAME));
-        ObjectMapper mapper = new ObjectMapper();
-        try {
-            List<Page> pages = mapper.readValue(object.getObjectContent(), new TypeReference<List<Page>>(){});
-            pages.forEach(page -> {
+        Optional<List<Page>> pages = readPages();
+        pages.ifPresent(pageList -> {
+            pageList.forEach( page -> {
                 System.out.println("setting up response " + page.getContent() + " for path " + page.getPath());
                 get(page.getPath(), (request, response) -> {
-                    System.out.println("Getting content " + page.getContent() + " for path " + page.getPath());
-                    return page.getContent();
-                });
+                            System.out.println("Getting content " + page.getContent() + " for path " + page.getPath());
+                            return page.getContent();
+                        }
+                );
             });
+        });
 
-            System.out.println(pages);
+        System.out.println(pages);
+        }
+
+    }
+
+    public static Optional<List<Page>> readPages() {
+        S3Object object = s3.getObject(new GetObjectRequest(BUCKET_NAME, FILE_NAME));
+        ObjectMapper mapper = new ObjectMapper();
+        List<Page> pages = null;
+        try {
+            pages = mapper.readValue(object.getObjectContent(), new TypeReference<List<Page>>(){});
         } catch (IOException e) {
             e.printStackTrace();
         }
+        return Optional.ofNullable(pages);
+    }
+
+    public static void setUpDB() {
+        PageDao pageDao = new PageDao("javaspark-aurora-db.cluster-cdrigdk6s55g.eu-central-1.rds.amazonaws.com", "javaspark");
+        pageDao.createTables();
+        readPages().ifPresent(pages -> {
+            Optional<List<Page>> insertedPages = pageDao.insertPages(pages);
+            if (insertedPages.isPresent()) {
+                System.out.println("Inserted pages: " + insertedPages.get());
+            } else {
+                System.out.println("No pages were returned from query");
+            }
+        });
 
     }
 }

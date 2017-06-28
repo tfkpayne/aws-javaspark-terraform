@@ -36,6 +36,33 @@ resource "aws_key_pair" "auth" {
   public_key = "${file("/Users/tom/Downloads/tom-payne-ee.pub")}"
 }
 
+resource "aws_rds_cluster_instance" "cluster_instances" {
+  count              = 2
+  identifier         = "javaspark-aurora-instance-${count.index}"
+  cluster_identifier = "${aws_rds_cluster.default.id}"
+  instance_class     = "db.t2.small"
+  publicly_accessible = true
+
+  provisioner "local-exec" {
+    command = "echo ${aws_rds_cluster.default.id}"
+    command = "echo ${aws_rds_cluster.default.endpoint}"
+  }
+
+}
+
+resource "aws_rds_cluster" "default" {
+  cluster_identifier = "javaspark-aurora-db"
+  availability_zones = ["eu-central-1a", "eu-central-1b"]
+  database_name      = "javaspark"
+  master_username    = "javaspark"
+  master_password    = "javaspark"
+  skip_final_snapshot = true
+  vpc_security_group_ids = ["${aws_security_group.aurora.id}"]
+  provisioner "local-exec" {
+    command = "echo ${aws_rds_cluster.default.id}"
+    command = "echo ${aws_rds_cluster.default.endpoint}"
+  }
+}
 
 resource "aws_instance" "spark_rest" {
   ami           = "ami-8da700e2"
@@ -101,6 +128,20 @@ resource "aws_security_group" "spark_lb" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+# A security group for the ELB so it is accessible via the web
+resource "aws_security_group" "aurora" {
+  name        = "tom_spark_aurora"
+
+  # JDBC access from anywhere
+  ingress {
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
 }
 
 resource "aws_elb" "spark_lb" {
